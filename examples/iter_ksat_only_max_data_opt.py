@@ -19,6 +19,9 @@ from gsopt.scenarios import ScenarioGenerator
 from gsopt.utils import filter_warnings
 import os
 import brahe as bh
+from gsopt.ephemeris import get_latest_celestrak_tles
+
+
 
 filter_warnings()
 
@@ -36,7 +39,7 @@ def download_earth_data(filename):
 # print(os.path.exists('data/iau2000A_finals_ab.txt'))
 # print("YOOOO")
 # download_earth_data('data/iau2000A_finals_ab.txt')
-
+get_latest_celestrak_tles()
 # Set up logging
 logging.basicConfig(
     datefmt='%Y-%m-%dT%H:%M:%S',
@@ -50,7 +53,7 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 # OPTIMIZER SELECTION
-optimizer = get_optimizer('gurobi')  # 'scip', 'cbc', 'glpk', or 'gurobi'
+optimizer_type = get_optimizer('gurobi')  # 'scip', 'cbc', 'glpk', or 'gurobi'
 
 # Define the optimization window
 opt_start = datetime.datetime.now(datetime.timezone.utc)
@@ -78,45 +81,57 @@ scengen._provider_datarate['default'] = (1.2e9, 1.2e9)
 # Add only Capella constellation
 scengen.add_constellation('CAPELLA')
 
+# scengen.add_constellation('ICEYE')
+
 # Add only KSAT provider
 scengen.add_provider('ksat.json')
 
 # Generate a problem instance
-scen = scengen.sample_scenario()
+scenarios = scengen.iter_sample_scenario() # NEW CHANGE FROM GRACE
 
-# Display the generated scenario
-console.print(scen)
+scena = scengen.sample_scenario() # NEW CHANGE FROM GRACE
 
-# Create a MILP optimizer from the scenario
-optimizer = MilpOptimizer.from_scenario(scen, optimizer=optimizer)
+if not os.path.exists("output"):
+    os.makedirs("output")
 
-# Save plot of all stations
-optimizer.save_plot('capella_ksat_all_stations.png')
+for i,scen in enumerate(scenarios):
+    # Display the generated scenario
+    console.print(scen)
 
-# Compute contacts
-optimizer.compute_contacts()
+    # Create a MILP optimizer from the scenario
+    optimizer = MilpOptimizer.from_scenario(scen, optimizer=optimizer_type)
 
-# Setup the optimization problem to maximize data downlink
-optimizer.set_objective(
-    MaxDataDownlinkObjective()
-)
+    # Save plot of all stations
+    optimizer.save_plot('./output/capella_ksat_all_stations.png')
 
-# Add Constraints
-optimizer.add_constraints([
-    MinContactDurationConstraint(min_duration=180.0),  # Minimum 3 minute contact duration
-    StationContactExclusionConstraint(),
-    SatelliteContactExclusionConstraint(),  # This constraint should always be added to avoid self-interference
-    MaxStationsConstraint(num_stations=5) # At most 5 stations
-])
+    # Compute contacts
+    optimizer.compute_contacts()
 
-# Solve the optimization problem
-optimizer.solve()
+    # Setup the optimization problem to maximize data downlink
+    optimizer.set_objective(
+        MaxDataDownlinkObjective()
+    )
 
-# Display results
-console.print(optimizer)
+    # Add Constraints
+    optimizer.add_constraints([
+        MinContactDurationConstraint(min_duration=180.0),  # Minimum 3 minute contact duration
+        # StationContactExclusionConstraint(),
+        SatelliteContactExclusionConstraint(),  # This constraint should always be added to avoid self-interference
+        MaxStationsConstraint(num_stations=5) # At most 5 stations
+    ])
 
-# Optional: write the solution to a file
-optimizer.write_solution('capella_ksat_optimization.json')
+    # Solve the optimization problem
+    optimizer.solve()
 
-# Plot and save the selected ground stations
-optimizer.save_plot('capella_ksat_selected_stations.png')
+    # Display results
+    console.print(optimizer)
+
+    if i == len(scenarios)-1:
+        text = "global"
+    else:
+        text = i
+    # Optional: write the solution to a file
+    optimizer.write_solution(f'./output/capella_ksat_optimization_{text}.json')
+
+    # Plot and save the selected ground stations
+    optimizer.save_plot(f'./output/capella_ksat_selected_stations{text}.png')

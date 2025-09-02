@@ -433,3 +433,66 @@ class ScenarioGenerator():
             self._rng = Random()
 
         return scenario
+
+    def iter_sample_scenario(self): # -> Scenario:
+        """
+        Sample a scenario from the scenario generator
+
+        Returns:
+            Scenario: The sampled scenario
+        """
+
+        # Create copies of the providers and satellites
+
+        opt_window = copy.deepcopy(self.opt_window)
+        providers = [copy.deepcopy(p) for p in self.providers]
+        satellites = [copy.deepcopy(s) for s in self.satellites]
+
+        # Set properites for the providers based on the scenario generator settings
+        for provider in providers:
+            provider.set_property('elevation_min', self._provider_elevation_min.get(provider.name, self._provider_elevation_min['default']))
+            provider.integration_cost = self._rng.uniform(*self._provider_integration_cost.get(provider.name, self._provider_integration_cost['default']))
+            provider.set_property('setup_cost', self._rng.uniform(*self._provider_setup_cost.get(provider.name, self._provider_setup_cost['default'])))
+
+            provider_cost_type = self._rng.uniform(0, 1) >= self._provider_probability_of_pass_pricing.get(provider.name, self._provider_probability_of_pass_pricing['default'])
+
+            for station in provider.stations:
+
+                # Randomize number of antennas
+                provider.set_property('antennas', self._rng.randint(*self._provider_num_antennas.get(provider.name, self._provider_num_antennas['default'])), key=station.id)
+
+                # Randomize monthly cost, per satellite license cost, and data rate for each station
+                provider.set_property('monthly_cost', self._rng.uniform(
+                    *self._provider_monthly_cost.get(provider.name, self._provider_monthly_cost['default'])),
+                                      key=station.id)
+
+                provider.set_property('per_satellite_license_cost', self._rng.uniform(
+                    *self._provider_per_satellite_license_cost.get(provider.name,
+                                                                   self._provider_per_satellite_license_cost[
+                                                                       'default'])), key=station.id)
+
+                provider.set_property('datarate', self._rng.uniform(
+                    *self._provider_datarate.get(provider.name, self._provider_datarate['default'])),
+                                      key=station.id)
+
+                # Set station costs
+                if provider_cost_type:
+                    provider.set_property('cost_per_pass', self._rng.uniform(*self._provider_cost_per_pass.get(provider.name, self._provider_cost_per_pass['default'])), key=station.id)
+                    provider.set_property('cost_per_minute', 0.0, key=station.id)
+                else:
+                    provider.set_property('cost_per_pass', 0.0, key=station.id)
+                    provider.set_property('cost_per_minute', self._rng.uniform(*self._provider_cost_per_minute.get(provider.name, self._provider_cost_per_minute['default'])), key=station.id)
+
+        # Set properties for the satellites based on the scenario generator settings
+        for satellite in satellites:
+            satellite.datarate = self._rng.uniform(*self._sat_datarate_ranges.get(satellite.satcat_id, self._sat_datarate_ranges['default']))
+
+        # Create the scenario
+        scenarios = [Scenario(opt_window, providers, [s], self._rng.get_seed()) for s in satellites]
+        scenarios.append(Scenario(opt_window, providers, satellites, self._rng.get_seed()))
+
+        # Reinitialize the random number generator to ensure reproducibility
+        if self.seed is None:
+            self._rng = Random()
+
+        return scenarios

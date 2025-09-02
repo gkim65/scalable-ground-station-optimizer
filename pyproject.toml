@@ -6,7 +6,7 @@ authors = [
 ]
 description = "Ground Station Optimizer - A tool for analyzing and optimizing ground station providers and locations for satellite operators"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 dependencies = [
     "brahe@git+https://github.com/duncaneddy/brahe.git@master",
@@ -20,8 +20,13 @@ dependencies = [
     "plotly>=5.22.0,<6.0.0",
     "httpx>=0.27.0,<1.0.0",
     "pyomo>=6.7.3,<7.0.0",
-    "gurobipy>=11.0.3,<12.0.0",
+    "gurobipy>=11.0.3,<12.0.3",
     "rich>=13.0.0,<14.0.0",
+    "ipykernel>=6.30.1",
+    "scikit-learn>=1.7.1",
+    "kmedoids>=0.5.3.1",
+    "wandb>=0.21.3",
+    "hydra-core>=1.3.2",
 ]
 
 # Add dev dependencies

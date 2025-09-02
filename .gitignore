@@ -180,3 +180,5 @@ cython_debug/
 # Added by Grace > Keep stationary for testing
 data/iau2000A_finals_ab.txt
 data/celestrak_tles.txt
+
+output/**
