@@ -425,7 +425,7 @@ class MaxProvidersConstraint(pk.block, GSOptConstraint):
 
 class MaxStationsConstraint(pk.block, GSOptConstraint):
     """
-    Constraint that enforces the number of ground station locations that can be selected is less than or equal to
+    Constraint that enforces the number of ground station locations that can be selected is at least one or less than or equal to
     the given number.
     """
 
@@ -440,8 +440,8 @@ class MaxStationsConstraint(pk.block, GSOptConstraint):
         """
         Generate the constraint_list function.
         """
-
         self.constraints.append(pk.constraint(sum(pn.var for pn in station_nodes.values()) <= self.num_stations))
+
 
 
 class MinContactDurationConstraint(pk.block, GSOptConstraint):

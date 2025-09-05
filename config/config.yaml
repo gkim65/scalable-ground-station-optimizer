@@ -1,0 +1,67 @@
+# Config files for problem setup and formulation
+# Can input the following:
+#     - Problem Scope
+#         - Solution method
+#         - of sites to select
+#     - Scenario Development:
+#         - previous sites & locations
+#         - Satellite list
+#         - start and end epochs 
+# Output of selected sites
+
+wandb:
+  entity: "kmeans_gsopt"
+
+
+
+setup:
+  name: "9_4_11-02PM"
+  method: "KMediods"                      # "IP", "KMediods"
+  trials: 10
+  objective: "minmax_gap"           # max_data, minmean_gap, minmax_gap, mintotal_gap
+  gs_num: 5
+
+
+scenario:
+  constellations: "WALKER"       # 'YAM', 'UMBRA', 'SKYSAT', 'ICEYE', 
+                                  #'FLOCK', 'HAWK', 'CAPELLA', 'LEGION', 
+                                  #'WORLDVIEW', 'GEOEYE', 'NUSAT', or "WALKER"
+  providers: "all"                #"ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat" OR "all"
+  datarate: 1200000000.0          # Data Rate [bps], for now, just set to this for all satellites 
+                                  # and ground stations
+  chunks: 1                    # number of satellite split chunks
+
+
+# Only used if scenario.constellations is set to "WALKER"
+walker:
+  star: True                      # make False for Delta
+  altitude: 781                   # Km
+  eccentricity: 0.001             #(just can't be zero), 0 is closer to circle
+  inclination: 86.4               # usually close to 90 for star, less than 60 for walker delta
+  num_planes: 1
+  sats_perplane: 1
+  argp: 0.0
+  norad_start: 10000              # just names for satellites, set to a number
+
+
+method:
+  optimizer: "gurobi"             # 'scip', 'cbc', 'glpk', or 'gurobi'
+
+start_epoch:
+  year: 2025
+  month: 8
+  day: 22
+  hour: 0
+  minute: 0
+  second: 0
+  partSecond: 0
+
+opt:
+  full_length: 7            # days
+  window_length: 24         # hours (window per iteration) 
+  overlap: 12                # Example: overlap 12 hours between window_lengths
+
+debug:
+  txtUpdate: False                 # updating earth data and celestrak files
+  randseed: 42
+  

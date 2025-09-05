@@ -13,6 +13,7 @@ import httpx
 import streamlit as st
 import polars as pl
 import brahe as bh
+import numpy as np
 
 from gsopt.models import Satellite
 from gsopt.utils import get_last_modified_time_as_datetime
@@ -44,7 +45,7 @@ def get_latest_celestrak_tles(output_dir='./data'):
     else:
         logger.error(f"Failed to download TLE data from Celestrak. Status code: {response.status_code}")
 
-def get_tles():
+def get_tles(update= False):
 
     # Check on time of last update
     last_update = get_last_modified_time_as_datetime(EPHEMERIS_PATH)
@@ -53,8 +54,9 @@ def get_tles():
 
     # If the file is older than 1 day, download the latest TLE data
     if (datetime.datetime.now() - last_update).days > 1:
-        logger.info(f'TLE data is {(datetime.datetime.now() - last_update).days} days old. Updating...')
-        get_latest_celestrak_tles()
+        if update:
+            logger.info(f'TLE data is {(datetime.datetime.now() - last_update).days} days old. Updating...')
+            get_latest_celestrak_tles()
     else:
         logger.info(f'TLE data is {(datetime.datetime.now() - last_update).days} days old. TLE data is up to date.')
 
@@ -168,3 +170,33 @@ def satellite_from_satcat_id(satcat_id: str, datarate: float = 2.0e9) -> Satelli
     satellite = Satellite(tle['satcat_id'], tle['object_name'], tle['tle_line1'], tle['tle_line2'], datarate=datarate)
 
     return satellite
+
+
+def make_tle(epc0, alt, ecc, inc, raan, argp, M, ndt2=0.0, nddt6=0.0, bstar=0.0, norad_id=99999):
+    '''Get a TLE object from the given orbital elements
+
+    Args:
+    - epc0 (Epoch): Epoch of the orbital elements / state
+    - alt (float): Altitude of the orbit [km]
+    - ecc (float): Eccentricity of the orbit
+    - inc (float): Inclination of the orbit [deg]
+    - raan (float): Right Ascension of the Ascending Node [deg]
+    - argp (float): Argument of Perigee [deg]
+    - M (float): Mean Anomaly [deg]
+
+    Returns:
+    - tle (TLE): TLE object for the given orbital elements
+    '''
+
+    alt *= 1e3 # Convert to meters
+
+    # Get semi-major axis
+    sma = bh.R_EARTH + alt
+
+    # Get mean motion
+    n = bh.mean_motion(sma)/(2*np.pi)*86400
+
+    tle_string = bh.tle_string_from_elements(epc0, np.array([n, ecc, inc, raan, argp, M, ndt2, nddt6, bstar]), norad_id)
+    tle = bh.TLE(*tle_string)
+    return tle
+

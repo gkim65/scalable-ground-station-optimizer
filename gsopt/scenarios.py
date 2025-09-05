@@ -11,9 +11,11 @@ import polars as pl
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.table import Table
 
-from gsopt.ephemeris import get_satcat_df
+from gsopt.ephemeris import get_satcat_df, make_tle
 from gsopt.models import GroundStationProvider, OptimizationWindow, Satellite
 from gsopt.widgets import satellites_from_dataframe
+
+import brahe as bh
 
 # Get directory of current file
 DIR = pathlib.Path(__file__).parent.absolute()
@@ -123,6 +125,16 @@ class ScenarioGenerator():
             raise ValueError(f'Provider {provider} not found in {PROVIDERS}')
 
         provider_file = DIR / '..' / 'data' / 'groundstations' / provider
+
+        with open(provider_file, 'r') as f:
+            self.providers.append(GroundStationProvider.load_geojson_file(f))
+    
+    def add_provider_selected(self, provider: str):
+
+        if provider not in PROVIDERS:
+            raise ValueError(f'Provider {provider} not found in {PROVIDERS}')
+
+        provider_file = DIR / '..' / 'data' / 'selectedStations' / provider
 
         with open(provider_file, 'r') as f:
             self.providers.append(GroundStationProvider.load_geojson_file(f))
@@ -320,6 +332,59 @@ class ScenarioGenerator():
 
         self.satellites.extend(satellites_from_dataframe(constellation_sats))
 
+    def add_walker_constellation(self,
+        epoch=bh.Epoch(2024, 5, 20, 0, 0, 0),
+        altitude_km=550,
+        eccentricity=0.001,
+        inclination=90,
+        num_planes=6,
+        sats_per_plane=4,
+        argp=0.0,
+        norad_start=10000,
+        star = True,
+        datarate =  1200000000.0
+    ):
+        """
+        Generate a Walker-Delta constellation and return a list of Spacecraft objects.
+        """
+        total_sats = num_planes * sats_per_plane
+        plane_spacing = 180 if star else 360  # Key difference between Star/Delta
+        phase = 2 if star else 1
+        constellation = []
+
+        for p in range(num_planes):
+            raan = (plane_spacing * p / num_planes)
+            for s in range(sats_per_plane):
+                mean_anomaly = ( (360.0 / sats_per_plane) * s + \
+                    (phase * p * 360.0 / total_sats) ) % 360.0
+                # mean_anomaly = (360/sats_per_plane) * ((s + phase*p) % sats_per_plane)
+                norad_id = norad_start + p * sats_per_plane + s
+                
+                # Create TLE using your make_tle function
+                tle = make_tle(
+                    epc0=epoch,
+                    alt=altitude_km,
+                    ecc=eccentricity,
+                    inc=inclination,
+                    raan=raan,
+                    argp=argp,
+                    M=mean_anomaly,
+                    norad_id=norad_id
+                )
+
+                sat_name = f"Sat_{p}_{s}"
+
+                # Create a Satellite object from the TLE data
+                satellite = Satellite(norad_id,
+                                    sat_name,
+                                    tle.line1, 
+                                    tle.line2, 
+                                    datarate)
+
+                constellation.append(satellite)
+
+        self.satellites.extend(constellation)
+
     def add_satellite(self, sat_id: str | int):
         """
         Add a specific satellite to the scenario generator
@@ -434,7 +499,7 @@ class ScenarioGenerator():
 
         return scenario
 
-    def iter_sample_scenario(self): # -> Scenario:
+    def iter_sample_scenario(self, chunks=1): # -> Scenario:
         """
         Sample a scenario from the scenario generator
 
@@ -487,9 +552,21 @@ class ScenarioGenerator():
         for satellite in satellites:
             satellite.datarate = self._rng.uniform(*self._sat_datarate_ranges.get(satellite.satcat_id, self._sat_datarate_ranges['default']))
 
-        # Create the scenario
-        scenarios = [Scenario(opt_window, providers, [s], self._rng.get_seed()) for s in satellites]
-        scenarios.append(Scenario(opt_window, providers, satellites, self._rng.get_seed()))
+
+        # Split satellites into the specified number of chunks
+        chunk_size = max(1, len(satellites) // chunks)
+        scenarios = [
+            Scenario(opt_window, providers, satellites[i * chunk_size : (i + 1) * chunk_size], self._rng.get_seed())
+            for i in range(chunks)
+        ]
+        # Handle any remaining satellites (if not evenly divisible)
+        remainder = len(satellites) % chunks
+        if remainder:
+            start = chunks * chunk_size
+            if start < len(satellites):
+                scenarios.append(
+                    Scenario(opt_window, providers, satellites[start:], self._rng.get_seed())
+                )
 
         # Reinitialize the random number generator to ensure reproducibility
         if self.seed is None:

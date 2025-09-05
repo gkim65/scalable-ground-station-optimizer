@@ -81,6 +81,20 @@ def get_time_string(t: float) -> str:
         return (f"{math.floor(t / 86400)} days, {math.floor(t / 3600) % 24} hours, {math.floor(t / 60) % 60} minutes, "
                 f"and {t % 60:.2f} seconds")
 
+
+
+def download_earth_data():
+    """
+    Here we can download the latest Earth orientation data and load it.
+    """
+
+    print("Downloading latest earth orientation data...")
+    if not os.path.exists("data"):
+        os.makedirs("data")
+    bh.utils.download_iers_bulletin_ab("./data")
+    print("Download complete")
+
+
 def initialize_eop(filepath: str = None):
     """
     Helper function to initialize the Earth Orientation Parameters (EOP) data for Brahe.
