@@ -15,18 +15,19 @@ wandb:
 
 
 setup:
-  name: "9_4_11-02PM"
+  name: "9_5_11-05AM"
   method: "KMediods"                      # "IP", "KMediods"
   trials: 10
   objective: "minmax_gap"           # max_data, minmean_gap, minmax_gap, mintotal_gap
-  gs_num: 5
+  gs_num: 2
+  full_ip: True
 
 
 scenario:
   constellations: "WALKER"       # 'YAM', 'UMBRA', 'SKYSAT', 'ICEYE', 
                                   #'FLOCK', 'HAWK', 'CAPELLA', 'LEGION', 
                                   #'WORLDVIEW', 'GEOEYE', 'NUSAT', or "WALKER"
-  providers: "all"                #"ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat" OR "all"
+  providers: "ksat"                #"ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat" OR "all"
   datarate: 1200000000.0          # Data Rate [bps], for now, just set to this for all satellites 
                                   # and ground stations
   chunks: 1                    # number of satellite split chunks

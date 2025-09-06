@@ -70,7 +70,8 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
     else:
         scengen.add_constellation(cfg.scenario.constellations)
 
-    if run_name ==  "KMediods_IP":
+
+    if run_name.startswith("KMediods_IP"):
         files = os.listdir('data/selectedStations')
         json_files = [f for f in files if f.endswith('.json')]
         for provider in json_files:
@@ -319,16 +320,17 @@ def main_ip(cfg : DictConfig) -> None:
         all_coords.extend(coords_list)
         all_groups.extend(groups)
     
-    # Full IP:
-    scenario_gen(cfg, 
-                 OptimizationWindow(
-                    opt_time,
-                    opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                    opt_time,
-                    opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                ), 
-                "IP_true_solution",
-                True)
+    if cfg.setup.full_ip:
+        # Full IP:
+        scenario_gen(cfg, 
+                    OptimizationWindow(
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                    ), 
+                    "IP_true_solution",
+                    True)
     
     # Kmediods
     if cfg.setup.method == "KMediods":
@@ -339,7 +341,12 @@ def main_ip(cfg : DictConfig) -> None:
         proj_name = cfg.setup.name+"_"+cfg.setup.method+"_"+cfg.setup.objective+"_"+ cfg.scenario.providers+"="+str(cfg.setup.gs_num)+"_"+cfg.scenario.constellations+"="+str(cfg.walker.num_planes)
 
         run = wandb.init(entity=cfg.wandb.entity, project=proj_name, name="KclusterList")
-        run.config.update(c)
+
+        config_dict = OmegaConf.to_container(
+            cfg, resolve=True, throw_on_missing=True
+        )
+
+        wandb.config.update(config_dict)
 
         table = wandb.Table(dataframe=df_all_og)
         wandb.log({"all_cluster_points": table})
@@ -373,7 +380,7 @@ def main_ip(cfg : DictConfig) -> None:
                         opt_time,
                         opt_time + datetime.timedelta(days=cfg.opt.full_length)
                     ), 
-                    "KMediods_IP",
+                    "KMediods_IP"+str(seed),
                     True)
 
 if __name__ == "__main__":
