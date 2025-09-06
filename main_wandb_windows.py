@@ -161,7 +161,7 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
         # Display results
         console.print(optimizer)
         
-        text = str(scen.opt_window.opt_start)+"___"+str(scen.opt_window.opt_start)
+        text = str(scen.opt_window.opt_start)+"___"+str(scen.opt_window.opt_end)
         # Optional: write the solution to a file
         optimizer.write_solution(f'output/capella_ksat_optimization_{text}.json')
 
