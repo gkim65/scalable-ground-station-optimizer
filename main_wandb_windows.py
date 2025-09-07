@@ -81,6 +81,10 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
             providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
             for provider in providers:
                 scengen.add_provider(f'{provider}.json')    
+        if cfg.scenario.providers == "ksat-atlas":
+            providers = ["ksat", "atlas"]
+            for provider in providers:
+                scengen.add_provider(f'{provider}.json')    
         else:
             # Add only KSAT provider
             scengen.add_provider(f'{cfg.scenario.providers}.json')

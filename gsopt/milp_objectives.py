@@ -213,6 +213,9 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
         # Set objective to minimize the maximum gap
         self.obj.expr = self.variable_dict['max_gap']
 
+        # add a constraint bounding max_gap
+        self.constraints.append(pk.constraint(self.variable_dict['max_gap'] <= 13200.0))
+
         for sat_id, sat_contacts in groupby(contact_nodes_by_satellite, lambda cn: cn.satellite.id):
             # Sort contacts by start time
             sat_contacts = list(sorted(sat_contacts, key=lambda cn: cn.model.t_start))
@@ -269,22 +272,26 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
                 expr = pk.expression(0)
 
                 for j, cn_j in enumerate(filter(lambda cn: cn.model.t_start > cn_i.model.t_end, sat_contacts)):
-                    self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] = pk.variable(value=0, domain=pk.Binary)
+                    # compute candidate gap
+                    time_diff = cn_j.model.t_start - cn_i.model.t_end
 
-                    expr += self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
+                    #  pruning: only create pair variable if gap could be <= UB
+                    if time_diff <= 13200.0 + 1e-9:    # <-- add UB earlier in __init__ or pass in
+                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] = pk.variable(value=0, domain=pk.Binary)
 
-                    # Constraints to ensure if aux var = 1 → both contacts are scheduled
-                    self.constraints.append(pk.constraint(
-                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_i.id].var))
-                    self.constraints.append(pk.constraint(
-                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_j.id].var))
+                        expr += self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
 
-                    # Gap constraint between consecutive contacts
-                    self.constraints.append(pk.constraint(
-                        (cn_j.model.t_start - cn_i.model.t_end) *
-                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
-                        <= self.variable_dict['max_gap']
-                    ))
+                        # Constraints to ensure if aux var = 1 → both contacts are scheduled
+                        self.constraints.append(pk.constraint(
+                            self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_i.id].var))
+                        self.constraints.append(pk.constraint(
+                            self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_j.id].var))
+
+                        # Gap constraint between consecutive contacts
+                        self.constraints.append(pk.constraint(
+                            time_diff * self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
+                            <= self.variable_dict['max_gap']
+                        ))
 
                 # Add constraint that only one "next contact" can follow if scheduled
                 self.constraints.append(pk.constraint(expr == contact_nodes[cn_i.id].var))
