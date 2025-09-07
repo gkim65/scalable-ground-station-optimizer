@@ -81,7 +81,7 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
             providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
             for provider in providers:
                 scengen.add_provider(f'{provider}.json')    
-        if cfg.scenario.providers == "ksat-atlas":
+        elif cfg.scenario.providers == "ksat-atlas":
             providers = ["ksat", "atlas"]
             for provider in providers:
                 scengen.add_provider(f'{provider}.json')    
@@ -301,28 +301,30 @@ def main_ip(cfg : DictConfig) -> None:
                                     tzinfo=datetime.timezone.utc)
     current_start = opt_time
 
-    all_coords = []
-    all_groups = []
-    opt_window_list = []
-    while current_start < (opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24)):
-        opt_end = current_start + datetime.timedelta(hours=cfg.opt.window_length)
-        if opt_end > opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24):
-            opt_end = opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24)
-        
-        opt_window = OptimizationWindow(
-            current_start,
-            opt_end,
-            current_start,
-            opt_end,
-        )
-        opt_window_list.append(opt_window)
-        current_start += datetime.timedelta(hours=cfg.opt.window_length - cfg.opt.overlap)
+
+    if cfg.setup.method == "KMediods":
+        all_coords = []
+        all_groups = []
+        opt_window_list = []
+        while current_start < (opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24)):
+            opt_end = current_start + datetime.timedelta(hours=cfg.opt.window_length)
+            if opt_end > opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24):
+                opt_end = opt_time + datetime.timedelta(hours=cfg.opt.full_length * 24)
+            
+            opt_window = OptimizationWindow(
+                current_start,
+                opt_end,
+                current_start,
+                opt_end,
+            )
+            opt_window_list.append(opt_window)
+            current_start += datetime.timedelta(hours=cfg.opt.window_length - cfg.opt.overlap)
 
 
-    for window,opt_window in enumerate(opt_window_list):
-        coords_list, groups = scenario_gen(cfg, opt_window, "window-"+str(window), False)
-        all_coords.extend(coords_list)
-        all_groups.extend(groups)
+        for window,opt_window in enumerate(opt_window_list):
+            coords_list, groups = scenario_gen(cfg, opt_window, "window-"+str(window), False)
+            all_coords.extend(coords_list)
+            all_groups.extend(groups)
     
     if cfg.setup.full_ip:
         # Full IP:
