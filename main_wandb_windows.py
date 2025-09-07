@@ -113,7 +113,7 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
         proj_name = cfg.setup.name+"_"+cfg.setup.method+"_"+cfg.setup.objective+"_"+ cfg.scenario.providers+"="+str(cfg.setup.gs_num)+"_"+cfg.scenario.constellations+"="+str(cfg.walker.num_planes)
 
         if run_name:
-            run = wandb.init(entity=cfg.wandb.entity, project=proj_name, name = run_name)
+            run = wandb.init(entity=cfg.wandb.entity, project=proj_name, name = run_name+"_"+str(i))
         else:
             run = wandb.init(entity=cfg.wandb.entity, project=proj_name)
             
