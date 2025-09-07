@@ -375,12 +375,11 @@ class ScenarioGenerator():
                 sat_name = f"Sat_{p}_{s}"
 
                 # Create a Satellite object from the TLE data
-                satellite = Satellite(norad_id,
-                                    sat_name,
-                                    tle.line1, 
-                                    tle.line2, 
-                                    datarate)
-
+                satellite = Satellite(satcat_id=norad_id,
+                                    name = sat_name,
+                                    tle_line1 = tle.line1, 
+                                    tle_line2= tle.line2, 
+                                    datarate= datarate)
                 constellation.append(satellite)
 
         self.satellites.extend(constellation)

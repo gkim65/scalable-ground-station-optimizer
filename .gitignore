@@ -187,3 +187,5 @@ outputs
 data/selectedStations
 examples/**
 multirun
+
+plotting/artifacts
