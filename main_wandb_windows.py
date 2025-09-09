@@ -494,6 +494,7 @@ def main_ip(cfg : DictConfig) -> None:
                             "Kmeans_IP-Hungarian"+name_p+str(seed),
                             True,
                             GroundStationProvider_genAll(df_all_stations, final_stations))
+            seed += 1
     
     # Kmediods
     if cfg.setup.kmediods:
