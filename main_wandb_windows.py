@@ -419,7 +419,7 @@ def main_ip(cfg : DictConfig) -> None:
                     "IP_true_solution",
                     True)
 
-    if cfg.setup.method == "Kmeans":
+    if cfg.setup.kmeans:
 
 
         providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
@@ -496,7 +496,7 @@ def main_ip(cfg : DictConfig) -> None:
                             GroundStationProvider_genAll(df_all_stations, final_stations))
     
     # Kmediods
-    if cfg.setup.method == "KMediods":
+    if cfg.setup.kmediods:
 
 
         for seed in range(cfg.setup.trials):
