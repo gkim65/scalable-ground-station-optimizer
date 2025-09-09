@@ -189,3 +189,6 @@ examples/**
 multirun
 
 plotting/artifacts
+plotting/**/
+wandb_experiments
+plotting

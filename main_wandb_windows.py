@@ -14,7 +14,7 @@ from rich.console import Console
 from gsopt.milp_objectives import *
 from gsopt.milp_constraints import *
 from gsopt.milp_optimizer import MilpOptimizer, get_optimizer
-from gsopt.models import OptimizationWindow
+from gsopt.models import OptimizationWindow, GroundStation, GroundStationProvider
 from gsopt.scenarios import ScenarioGenerator
 from gsopt.utils import filter_warnings, download_earth_data
 import os
@@ -25,6 +25,8 @@ import numpy as np
 import pandas as pd
 import kmedoids
 
+from sklearn.cluster import KMeans
+import pickle
 
 # WandB & Hydra & json
 import wandb
@@ -35,7 +37,7 @@ import json
 import shutil
 import copy
 
-def scenario_gen(cfg, opt_window, run_name, all_true):
+def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
 
     # Create Rich console for pretty printing
     console = Console()
@@ -72,10 +74,14 @@ def scenario_gen(cfg, opt_window, run_name, all_true):
 
 
     if run_name.startswith("KMediods_IP"):
-        files = os.listdir('data/selectedStations')
-        json_files = [f for f in files if f.endswith('.json')]
-        for provider in json_files:
-            scengen.add_provider_selected(provider)    
+        for provider in providerCustom:
+            scengen.add_custom_providers(provider)
+        # files = os.listdir('data/selectedStations')
+        # json_files = [f for f in files if f.endswith('.json')]
+        # for provider in json_files:
+        #     scengen.add_provider_selected(provider)
+    elif run_name.startswith("Kmeans"):
+        scengen.add_custom_providers(providerCustom)
     else:
         if cfg.scenario.providers == "all":
             providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
@@ -261,9 +267,80 @@ def save_selected_json(matched_stations):
         with open(output_path, "w") as f:
             json.dump(selected_geojson, f, indent=2)
 
+def GroundStationProvider_gen(coords):
+    stationList = []
+    for i,coord in enumerate(coords):
+        stationList.append(GroundStation(
+        name = "GroundStation"+str(i),
+        longitude = coord[0],
+        latitude = coord[1],
+        provider = "KmeansProvider",
+        provider_id = "Kmeans_ID",
+        antennas = 3,
+    ))
+    return GroundStationProvider(stationList)
+            
+def GroundStationProvider_genAll(df_all, coords):
+
+    # Create a tuple version of 'Coord' for comparison
+    df_all['Coord_tuple'] = df_all['Coord'].apply(lambda x: tuple(x))
+
+    # Get the medoid coordinates as tuples
+    medoid_tuples = [tuple(coord) for coord in coords]
+
+    # Find matching rows
+    matched = df_all[df_all['Coord_tuple'].isin(medoid_tuples)][['name', 'provider', 'longitude', 'latitude']]
+
+    # Collect all matched stations as (provider, name) pairs
+    matched_stations = matched[['provider', 'name']].values.tolist()
+
+    # Organize matches by provider
+    provider_to_names = {}
+    for provider, name in matched_stations:
+        provider_to_names.setdefault(provider, set()).add(name)
+
+    allProviderList = []
+    for provider, names in provider_to_names.items():
+        # Read the provider's stations JSON file
+        input_path = f"data/groundstations/{provider.lower()}.json"
+        with open(input_path, "r") as f:
+            full_geojson = json.load(f)
+        
+        # Filter only features matching selected stations
+        selected_features = [
+            feat for feat in full_geojson["features"]
+            if feat["properties"]["name"] in names
+        ]
+        
+        allProviderList.append(GroundStationProvider.load_geojson({
+                        "type": "FeatureCollection",
+                        "features": selected_features
+                    }))
+        
+    return allProviderList
+
+
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main_ip(cfg : DictConfig) -> None:
 
+    cwd = os.getcwd()
+    print(cwd)
+    if os.path.basename(cwd) == "scalable-ground-station-optimizer":
+        os.makedirs("wandb_experiments", exist_ok=True)
+        os.chdir("wandb_experiments")
+    # Only change dir if not already inside wandb_experiments
+    elif os.path.basename(cwd) != "wandb_experiments":
+        # Go up one level
+        if  os.path.basename(os.path.dirname(cwd)) ==  "wandb_experiments":
+            os.chdir("..")
+
+
+    
+    # Create a timestamped directory and change into it
+    # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(cfg.setup.name, exist_ok=True)
+    os.chdir(cfg.setup.name)
+    
     # Set seed to ensure consistency
     random.seed(cfg.debug.randseed)
     np.random.seed(cfg.debug.randseed)
@@ -282,14 +359,6 @@ def main_ip(cfg : DictConfig) -> None:
         level=logging.INFO
     )
 
-    logger = logging.getLogger(__name__)
-
-    # Create Rich console for pretty printing
-    console = Console()
-
-    # OPTIMIZER SELECTION
-    optimizer_type = get_optimizer(cfg.method.optimizer)  # 'scip', 'cbc', 'glpk', or 'gurobi'
-
     # Define the optimization window
     opt_time = datetime.datetime(cfg.start_epoch.year,
                                     cfg.start_epoch.month,
@@ -302,7 +371,8 @@ def main_ip(cfg : DictConfig) -> None:
     current_start = opt_time
 
 
-    if cfg.setup.method == "KMediods":
+    # collect data for kmeans and kmediods
+    if cfg.setup.kdata:
         all_coords = []
         all_groups = []
         opt_window_list = []
@@ -325,21 +395,6 @@ def main_ip(cfg : DictConfig) -> None:
             coords_list, groups = scenario_gen(cfg, opt_window, "window-"+str(window), False)
             all_coords.extend(coords_list)
             all_groups.extend(groups)
-    
-    if cfg.setup.full_ip:
-        # Full IP:
-        scenario_gen(cfg, 
-                    OptimizationWindow(
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                    ), 
-                    "IP_true_solution",
-                    True)
-    
-    # Kmediods
-    if cfg.setup.method == "KMediods":
 
         # Convert to DataFrame for easier handling
         df_all_og = pd.DataFrame(all_coords, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
@@ -358,26 +413,61 @@ def main_ip(cfg : DictConfig) -> None:
         wandb.log({"all_cluster_points": table})
 
         run.finish()
+    
+
+    # Full IP:
+    if cfg.setup.full_ip:
+        scenario_gen(cfg, 
+                    OptimizationWindow(
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                    ), 
+                    "IP_true_solution",
+                    True)
+
+    if cfg.setup.method == "Kmeans":
+
+        # Only if we pregenerated clusters for mass experiments, IP used only for evaluation
+        if cfg.setup.clusters_pregen:
+            with open(cfg.setup.clusters_pregen_file, "rb") as f:
+                coords = pickle.load(f)
+            scenario_gen(cfg, 
+                        OptimizationWindow(
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                        ), 
+                        "Kmeans_IP_pregen",
+                        True,
+                        GroundStationProvider_gen(coords))
+        else:
+            for seed in range(cfg.setup.trials):
+                df_all = copy.deepcopy(df_all_og)
+                kmeans = KMeans(n_clusters=cfg.setup.gs_num, n_init="auto", random_state=cfg.debug.randseed+seed).fit(np.vstack(df_all['Coord'].values))
+
+                scenario_gen(cfg, 
+                        OptimizationWindow(
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                        ), 
+                        "Kmeans_IP"+str(seed),
+                        True,
+                        GroundStationProvider_gen(kmeans.cluster_centers_))
+
+    
+    # Kmediods
+    if cfg.setup.method == "KMediods":
+
+
         for seed in range(cfg.setup.trials):
             df_all = copy.deepcopy(df_all_og)
             km = kmedoids.KMedoids(cfg.setup.gs_num, method='fasterpam',metric="euclidean", random_state=cfg.debug.randseed+seed)
             c = km.fit(np.vstack(df_all['Coord'].values))
-
-            # getting the IP based contact windows now:
-
-            # Create a tuple version of 'Coord' for comparison
-            df_all['Coord_tuple'] = df_all['Coord'].apply(lambda x: tuple(x))
-
-            # Get the medoid coordinates as tuples
-            medoid_tuples = [tuple(coord) for coord in c.cluster_centers_]
-
-            # Find matching rows
-            matched = df_all[df_all['Coord_tuple'].isin(medoid_tuples)][['name', 'provider', 'longitude', 'latitude']]
-
-            # Collect all matched stations as (provider, name) pairs
-            matched_stations = matched[['provider', 'name']].values.tolist()
-            save_selected_json(matched_stations=matched_stations)
-
 
             scenario_gen(cfg, 
                     OptimizationWindow(
@@ -387,7 +477,9 @@ def main_ip(cfg : DictConfig) -> None:
                         opt_time + datetime.timedelta(days=cfg.opt.full_length)
                     ), 
                     "KMediods_IP"+str(seed),
-                    True)
+                    True,
+                    GroundStationProvider_genAll(df_all, c.cluster_centers_))
+    
 
 if __name__ == "__main__":
     main_ip()

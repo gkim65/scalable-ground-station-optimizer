@@ -15,19 +15,24 @@ wandb:
 
 
 setup:
-  name: "9_5_01-53PM"
-  method: "KMediods"                      # "IP", "KMediods"
-  trials: 10
+  name: "Mac-9_7_12-10ddPM"
+  method: "IP"                      # "IP", "KMediods" "Kmeans"
+  trials: 5
   objective: "max_data"           # max_data, minmean_gap, minmax_gap, mintotal_gap
-  gs_num: 3
-  full_ip: True
+  gs_num: 2
+  full_ip: False                   # to run the full IP with no breakups
+  kdata: False                     # to generate data for kmeans cluster
+  clusters_pregen: True           # pickle data with kmeans
+  clusters_pregen_file: "plotting/kmeans.pkl"
+
+
 
 
 scenario:
   constellations: "WALKER"       # 'YAM', 'UMBRA', 'SKYSAT', 'ICEYE', 
                                   #'FLOCK', 'HAWK', 'CAPELLA', 'LEGION', 
                                   #'WORLDVIEW', 'GEOEYE', 'NUSAT', or "WALKER"
-  providers: "ksat"                #"ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat" OR "all"
+  providers: "ksat-atlas"                # ksat-atlas", "ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat" OR "all"
   datarate: 1200000000.0          # Data Rate [bps], for now, just set to this for all satellites 
                                   # and ground stations
   chunks: 1                    # number of satellite split chunks
@@ -39,7 +44,7 @@ walker:
   altitude: 781                   # Km
   eccentricity: 0.001             #(just can't be zero), 0 is closer to circle
   inclination: 86.4               # usually close to 90 for star, less than 60 for walker delta
-  num_planes: 1
+  num_planes: 2
   sats_perplane: 1
   argp: 0.0
   norad_start: 10000              # just names for satellites, set to a number
@@ -58,9 +63,9 @@ start_epoch:
   partSecond: 0
 
 opt:
-  full_length: 7            # days
+  full_length: 1         # days
   window_length: 24         # hours (window per iteration) 
-  overlap: 12                # Example: overlap 12 hours between window_lengths
+  overlap: 12                # Example: overlap X hours between window_lengths, make sure smaller than window lengths
 
 debug:
   txtUpdate: False                 # updating earth data and celestrak files

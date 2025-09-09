@@ -114,7 +114,7 @@ class ScenarioGenerator():
         self._provider_probability_of_pass_pricing = {'default': 0.5}
         self._provider_cost_per_pass = {'default': (25.0, 175.0)}
         self._provider_cost_per_minute = {'default': (5.0, 35.0)}
-        self._provider_num_antennas = {'default': (1, 3)}
+        self._provider_num_antennas = {'default': (3, 3)}
 
     def set_seed(self, seed):
         self._rng.seed(seed)
@@ -142,6 +142,9 @@ class ScenarioGenerator():
     def add_all_providers(self):
         for provider in PROVIDERS:
             self.add_provider(provider)
+
+    def add_custom_providers(self, provider:GroundStationProvider):
+        self.providers.append(provider)
 
     def _set_provider_property(self, property_name, value, provider_name=None):
         if provider_name is None:
