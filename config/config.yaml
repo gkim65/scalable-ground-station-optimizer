@@ -16,14 +16,17 @@ wandb:
 
 setup:
   name: "Mac-9_7_12-10ddPM"
-  method: "IP"                      # "IP", "KMediods" "Kmeans"
+  method: "Kmeans"                      # "IP", "KMediods" "Kmeans"
   trials: 5
   objective: "max_data"           # max_data, minmean_gap, minmax_gap, mintotal_gap
   gs_num: 2
-  full_ip: False                   # to run the full IP with no breakups
-  kdata: False                     # to generate data for kmeans cluster
-  clusters_pregen: True           # pickle data with kmeans
-  clusters_pregen_file: "plotting/kmeans.pkl"
+  full_ip: True                   # to run the full IP with no breakups
+  kdata: True                     # to generate data for kmeans cluster
+  kmediods: True
+  kmeans: True
+  # only currently used with kmeans (next two variables)
+  clusters_pregen: False           # FOR DEBUGGING: saved pickle data with kmeans
+  clusters_pregen_file: ""         # FOR DEBUGGING: saved pickle data with kmeans file location
 
 
 

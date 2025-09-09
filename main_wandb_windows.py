@@ -27,6 +27,8 @@ import kmedoids
 
 from sklearn.cluster import KMeans
 import pickle
+from geopy.distance import geodesic
+from scipy.optimize import linear_sum_assignment
 
 # WandB & Hydra & json
 import wandb
@@ -73,7 +75,7 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
         scengen.add_constellation(cfg.scenario.constellations)
 
 
-    if run_name.startswith("KMediods_IP"):
+    if run_name.startswith("KMediods_IP") or run_name.startswith("Kmeans_IP-"):
         for provider in providerCustom:
             scengen.add_custom_providers(provider)
         # files = os.listdir('data/selectedStations')
@@ -223,50 +225,6 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
 
     return coords_list, groups
 
-def save_selected_json(matched_stations):
-
-    # Organize matches by provider
-    provider_to_names = {}
-    for provider, name in matched_stations:
-        provider_to_names.setdefault(provider, set()).add(name)
-
-    # Delete all contents in 'data/selectedStations' directory if it exists
-    if not os.path.exists("data/selectedStations"):
-        os.makedirs("data/selectedStations")
-    else:
-        for filename in os.listdir("data/selectedStations"):
-            file_path = os.path.join("data/selectedStations", filename)
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-
-
-
-    for provider, names in provider_to_names.items():
-        # Read the provider's stations JSON file
-        input_path = f"data/groundstations/{provider.lower()}.json"
-        output_path = f"data/selectedStations/{provider.lower()}.json"
-        with open(input_path, "r") as f:
-            full_geojson = json.load(f)
-        
-        # Filter only features matching selected stations
-        selected_features = [
-            feat for feat in full_geojson["features"]
-            if feat["properties"]["name"] in names
-        ]
-        
-        selected_geojson = {
-            "type": "FeatureCollection",
-            "features": selected_features
-        }
-        
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        with open(output_path, "w") as f:
-            json.dump(selected_geojson, f, indent=2)
-
 def GroundStationProvider_gen(coords):
     stationList = []
     for i,coord in enumerate(coords):
@@ -302,7 +260,7 @@ def GroundStationProvider_genAll(df_all, coords):
     allProviderList = []
     for provider, names in provider_to_names.items():
         # Read the provider's stations JSON file
-        input_path = f"data/groundstations/{provider.lower()}.json"
+        input_path = f"../../data/groundstations/{provider.lower()}.json"
         with open(input_path, "r") as f:
             full_geojson = json.load(f)
         
@@ -319,6 +277,42 @@ def GroundStationProvider_genAll(df_all, coords):
         
     return allProviderList
 
+def greedy_match(coords, stations_all):
+    # GREEDY SELECTION
+    used_stations = set()
+
+    for i, (clust_lon,clust_lat) in enumerate(coords):
+        # Only consider stations not already used
+        available_stations = [s for s in stations_all if s not in used_stations]
+        
+        if not available_stations:
+            print("No more stations available!")
+            break
+        
+        # Pick the nearest available station
+        best_station = min(
+            available_stations,
+            key=lambda s: geodesic((clust_lat, clust_lon), (s[1], s[0])).km
+        )
+        used_stations.add(best_station)  # mark as used
+    
+    return used_stations
+
+def hungarian_match(coords, stations_all):
+
+    # HUNGARIAN SELECTION
+    num_clusters = len(coords)
+    num_stations = len(stations_all)
+    dist_matrix = np.zeros((num_clusters, num_stations))
+
+    for i, (clust_lon,clust_lat) in enumerate(coords):
+        for j, (st_lon, st_lat) in enumerate(stations_all):
+            dist_matrix[i, j] = geodesic((clust_lat, clust_lon), (st_lat, st_lon)).km
+
+    row_ind, col_ind = linear_sum_assignment(dist_matrix)
+
+    return [stations_all[col] for row, col in zip(row_ind, col_ind)]
+    
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main_ip(cfg : DictConfig) -> None:
@@ -347,8 +341,8 @@ def main_ip(cfg : DictConfig) -> None:
 
     filter_warnings()
 
+    # Only bring back if we want to use new data
     if cfg.debug.txtUpdate:
-        # Only bring back if we want to use new data
         download_earth_data()
         get_latest_celestrak_tles()
 
@@ -369,7 +363,6 @@ def main_ip(cfg : DictConfig) -> None:
                                     cfg.start_epoch.partSecond, 
                                     tzinfo=datetime.timezone.utc)
     current_start = opt_time
-
 
     # collect data for kmeans and kmediods
     if cfg.setup.kdata:
@@ -413,7 +406,6 @@ def main_ip(cfg : DictConfig) -> None:
         wandb.log({"all_cluster_points": table})
 
         run.finish()
-    
 
     # Full IP:
     if cfg.setup.full_ip:
@@ -429,36 +421,79 @@ def main_ip(cfg : DictConfig) -> None:
 
     if cfg.setup.method == "Kmeans":
 
-        # Only if we pregenerated clusters for mass experiments, IP used only for evaluation
-        if cfg.setup.clusters_pregen:
-            with open(cfg.setup.clusters_pregen_file, "rb") as f:
-                coords = pickle.load(f)
-            scenario_gen(cfg, 
-                        OptimizationWindow(
-                            opt_time,
-                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                            opt_time,
-                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                        ), 
-                        "Kmeans_IP_pregen",
-                        True,
-                        GroundStationProvider_gen(coords))
+
+        providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
+        if cfg.scenario.providers == "all":
+            extra_providers = []
+        elif cfg.scenario.providers == "ksat-atlas":
+            extra_providers = ["ksat", "atlas"]
         else:
-            for seed in range(cfg.setup.trials):
+            extra_providers = [cfg.scenario.providers]
+        
+        stations_all = [] 
+        stations_extra = []
+        all_stations = []
+        
+        for provider in providers:
+            with open(f'../../data/groundstations/{provider}.json', 'r') as f:
+                data = json.load(f) 
+            for feature in data['features']:
+                stations_all.append(tuple(feature['geometry']['coordinates']))
+                if provider in extra_providers:
+                    stations_extra.append(tuple(feature['geometry']['coordinates']))
+                all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
+
+        # Convert to DataFrame for easier handling
+        df_all_stations = pd.DataFrame(all_stations, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
+
+        seed = 0
+        while seed < cfg.setup.trials:
+            # Only if we pregenerated clusters for mass experiments, IP used only for evaluation
+            if cfg.setup.clusters_pregen:
+                with open(cfg.setup.clusters_pregen_file, "rb") as f:
+                    coords = pickle.load(f)
+                seed = cfg.setup.trials
+            else:
                 df_all = copy.deepcopy(df_all_og)
                 kmeans = KMeans(n_clusters=cfg.setup.gs_num, n_init="auto", random_state=cfg.debug.randseed+seed).fit(np.vstack(df_all['Coord'].values))
+                coords = kmeans.cluster_centers_
 
-                scenario_gen(cfg, 
-                        OptimizationWindow(
-                            opt_time,
-                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                            opt_time,
-                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                        ), 
-                        "Kmeans_IP"+str(seed),
-                        True,
-                        GroundStationProvider_gen(kmeans.cluster_centers_))
+            scenario_gen(cfg, 
+                    OptimizationWindow(
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                    ), 
+                    "Kmeans_IP"+str(seed),
+                    True,
+                    GroundStationProvider_gen(coords))
+        
+            for name_p, stations_lists in zip([cfg.scenario.providers, "all_default"],[stations_extra, stations_all]):
+                if name_p != "all":
+                    final_stations = greedy_match(coords, stations_lists)            
 
+                    scenario_gen(cfg, 
+                            OptimizationWindow(
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                            ), 
+                            "Kmeans_IP-Greedy"+name_p+str(seed),
+                            True,
+                            GroundStationProvider_genAll(df_all_stations, final_stations))
+                    final_stations = hungarian_match(coords, stations_all)
+                    scenario_gen(cfg, 
+                            OptimizationWindow(
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                            ), 
+                            "Kmeans_IP-Hungarian"+name_p+str(seed),
+                            True,
+                            GroundStationProvider_genAll(df_all_stations, final_stations))
     
     # Kmediods
     if cfg.setup.method == "KMediods":
