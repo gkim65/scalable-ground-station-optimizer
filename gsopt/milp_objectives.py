@@ -214,7 +214,7 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
         self.obj.expr = self.variable_dict['max_gap']
 
         # add a constraint bounding max_gap
-        self.constraints.append(pk.constraint(self.variable_dict['max_gap'] <= 13200.0))
+        self.constraints.append(pk.constraint(self.variable_dict['max_gap'] <= 33200.0))
 
         for sat_id, sat_contacts in groupby(contact_nodes_by_satellite, lambda cn: cn.satellite.id):
             # Sort contacts by start time
@@ -276,7 +276,7 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
                     time_diff = cn_j.model.t_start - cn_i.model.t_end
 
                     #  pruning: only create pair variable if gap could be <= UB
-                    if time_diff <= 13200.0 + 1e-9:    # <-- add UB earlier in __init__ or pass in
+                    if time_diff <= 33200.0 + 1e-9:    # <-- add UB earlier in __init__ or pass in
                         self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] = pk.variable(value=0, domain=pk.Binary)
 
                         expr += self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
