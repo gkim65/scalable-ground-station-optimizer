@@ -25,10 +25,11 @@ import numpy as np
 import pandas as pd
 import kmedoids
 
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 import pickle
 from geopy.distance import geodesic
 from scipy.optimize import linear_sum_assignment
+from collections import Counter
 
 # WandB & Hydra & json
 import wandb
@@ -75,14 +76,14 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
         scengen.add_constellation(cfg.scenario.constellations)
 
 
-    if run_name.startswith("KMediods_IP") or run_name.startswith("Kmeans_IP-"):
+    if run_name.startswith("KMediods_IP") or run_name.startswith("Kmeans_IP-") or run_name.startswith("DBSCAN_IP-"):
         for provider in providerCustom:
             scengen.add_custom_providers(provider)
         # files = os.listdir('data/selectedStations')
         # json_files = [f for f in files if f.endswith('.json')]
         # for provider in json_files:
         #     scengen.add_provider_selected(provider)
-    elif run_name.startswith("Kmeans"):
+    elif run_name.startswith("Kmeans") or run_name.startswith("DBSCAN_IP"):
         scengen.add_custom_providers(providerCustom)
     else:
         if cfg.scenario.providers == "all":
@@ -116,7 +117,8 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path)
 
-
+    coords_list_full = []
+    groups_full = []
     # Runnning for every individual satellite scenario
     for i,scen in enumerate(scenarios):
         
@@ -210,6 +212,8 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
                     if coords:
                         coords_list.append([station['name'], station['provider'], float(coords[0]),float(coords[1]), (float(coords[0]),float(coords[1]))])
                         groups.append(text+"sat_chunk"+str(i))  # or f'optimization_{i}' if you want string labels
+                        coords_list_full.append([station['name'], station['provider'], float(coords[0]),float(coords[1]), (float(coords[0]),float(coords[1]))])
+                        groups_full.append(text+"sat_chunk"+str(i))  # or f'optimization_{i}' if you want string labels
                 # Convert to DataFrame for easier handling
                 df = pd.DataFrame(coords_list, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
                 df['Group'] = groups
@@ -223,7 +227,7 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
         wandb.save("output/*")
         run.finish()
 
-    return coords_list, groups
+    return coords_list_full, groups_full
 
 def GroundStationProvider_gen(coords):
     stationList = []
@@ -419,8 +423,87 @@ def main_ip(cfg : DictConfig) -> None:
                     "IP_true_solution",
                     True)
 
-    if cfg.setup.kmeans:
 
+    if cfg.setup.dbscan:
+        providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
+        if cfg.scenario.providers == "all":
+            extra_providers = []
+        elif cfg.scenario.providers == "ksat-atlas":
+            extra_providers = ["ksat", "atlas"]
+        else:
+            extra_providers = [cfg.scenario.providers]
+        
+        stations_all = [] 
+        stations_extra = []
+        all_stations = []
+        
+        for provider in providers:
+            with open(f'../../data/groundstations/{provider}.json', 'r') as f:
+                data = json.load(f) 
+            for feature in data['features']:
+                stations_all.append(tuple(feature['geometry']['coordinates']))
+                if provider in extra_providers:
+                    stations_extra.append(tuple(feature['geometry']['coordinates']))
+                all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
+
+        # Convert to DataFrame for easier handling
+        df_all_stations = pd.DataFrame(all_stations, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
+
+        for dist in [5,10,15,20,30]:
+            df_all = copy.deepcopy(df_all_og)
+            clusters = DBSCAN(eps=dist, min_samples=2).fit(np.vstack(df_all['Coord'].values))
+            coords = np.vstack(df_all['Coord'].values)
+
+            centroids = []
+            cluster_counts = Counter(clusters.labels_)
+
+            for label, count in cluster_counts.most_common():
+                if label != -1:
+                    cluster_points = coords[clusters.labels_ == label]
+                    centroid = cluster_points.mean(axis=0)
+                    centroids.append(centroid)
+            
+            print(centroids[0:cfg.setup.gs_num])
+
+            scenario_gen(cfg, 
+                    OptimizationWindow(
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                        opt_time,
+                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                    ), 
+                    "DBSCAN_IP"+str(dist),
+                    True,
+                    GroundStationProvider_gen(centroids[0:cfg.setup.gs_num]))
+        
+            for name_p, stations_lists in zip([cfg.scenario.providers, "all_default"],[stations_extra, stations_all]):
+                if name_p != "all":
+                    final_stations = greedy_match(centroids[0:cfg.setup.gs_num], stations_lists)            
+
+                    scenario_gen(cfg, 
+                            OptimizationWindow(
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                            ), 
+                            "DBSCAN_IP-Greedy"+name_p+str(dist),
+                            True,
+                            GroundStationProvider_genAll(df_all_stations, final_stations))
+                    final_stations = hungarian_match(centroids[0:cfg.setup.gs_num], stations_all)
+                    scenario_gen(cfg, 
+                            OptimizationWindow(
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                opt_time,
+                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                            ), 
+                            "DBSCAN_IP-Hungarian"+name_p+str(dist),
+                            True,
+                            GroundStationProvider_genAll(df_all_stations, final_stations))
+    
+    if cfg.setup.kmeans:
+        
 
         providers = ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"]
         if cfg.scenario.providers == "all":

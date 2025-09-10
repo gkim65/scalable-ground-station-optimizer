@@ -18,12 +18,13 @@ setup:
   name: "Mac-9_7_12-10ddPM"
   method: "Kmeans"                      # "IP", "KMediods" "Kmeans"
   trials: 5
-  objective: "max_data"           # max_data, minmean_gap, minmax_gap, mintotal_gap
-  gs_num: 2
+  objective: "minmax_gap"           # max_data, minmean_gap, minmax_gap, mintotal_gap
+  gs_num: 1
   full_ip: True                   # to run the full IP with no breakups
   kdata: True                     # to generate data for kmeans cluster
   kmediods: True
-  kmeans: True
+  kmeans: False
+  dbscan: True
   # only currently used with kmeans (next two variables)
   clusters_pregen: False           # FOR DEBUGGING: saved pickle data with kmeans
   clusters_pregen_file: ""         # FOR DEBUGGING: saved pickle data with kmeans file location
@@ -47,7 +48,7 @@ walker:
   altitude: 781                   # Km
   eccentricity: 0.001             #(just can't be zero), 0 is closer to circle
   inclination: 86.4               # usually close to 90 for star, less than 60 for walker delta
-  num_planes: 2
+  num_planes: 3
   sats_perplane: 1
   argp: 0.0
   norad_start: 10000              # just names for satellites, set to a number
@@ -66,7 +67,7 @@ start_epoch:
   partSecond: 0
 
 opt:
-  full_length: 1         # days
+  full_length: 7         # days
   window_length: 24         # hours (window per iteration) 
   overlap: 12                # Example: overlap X hours between window_lengths, make sure smaller than window lengths
 
@@ -74,3 +75,5 @@ debug:
   txtUpdate: False                 # updating earth data and celestrak files
   randseed: 42
   
+
+

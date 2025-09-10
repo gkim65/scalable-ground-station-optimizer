@@ -204,7 +204,9 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
 
         # Group contacts by satellite
         contact_nodes_by_satellite = sorted(contact_nodes.values(), key=lambda cn: cn.satellite.id)
-
+        # for sat_id, group in groupby(contact_nodes_by_satellite, key=lambda cn: cn.satellite.id):
+        #     sat_contacts = list(group)
+        #     print(f"Satellite {sat_id} has {len(sat_contacts)} contacts")
         self.variable_dict = pk.variable_dict()
 
         # Create auxiliary variable for the max gap across all satellites and contacts
@@ -214,13 +216,13 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
         self.obj.expr = self.variable_dict['max_gap']
 
         # add a constraint bounding max_gap
-        self.constraints.append(pk.constraint(self.variable_dict['max_gap'] <= 33200.0))
+        # self.constraints.append(pk.constraint(self.variable_dict['max_gap'] <= 86400.0))
 
         for sat_id, sat_contacts in groupby(contact_nodes_by_satellite, lambda cn: cn.satellite.id):
             # Sort contacts by start time
             sat_contacts = list(sorted(sat_contacts, key=lambda cn: cn.model.t_start))
 
-            # Force at least one contact scheduled for this satellite
+            # Force at least one contact scheduled for this satellite TODO: Changing to none?
             # NOTE: you may want to change >= 2 → >= 1 if single contacts should be allowed
             contact_vars = [contact_nodes[cn.id].var for cn in sat_contacts]
             self.constraints.append(pk.constraint(sum(contact_vars) >= 1))
@@ -276,25 +278,28 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
                     time_diff = cn_j.model.t_start - cn_i.model.t_end
 
                     #  pruning: only create pair variable if gap could be <= UB
-                    if time_diff <= 33200.0 + 1e-9:    # <-- add UB earlier in __init__ or pass in
-                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] = pk.variable(value=0, domain=pk.Binary)
+                    # if time_diff <= 86400.0 + 1e-9:    # <-- add UB earlier in __init__ or pass in
+                    self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] = pk.variable(value=0, domain=pk.Binary)
 
-                        expr += self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
+                    expr += self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
 
-                        # Constraints to ensure if aux var = 1 → both contacts are scheduled
-                        self.constraints.append(pk.constraint(
-                            self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_i.id].var))
-                        self.constraints.append(pk.constraint(
-                            self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_j.id].var))
+                    # Constraints to ensure if aux var = 1 → both contacts are scheduled
+                    self.constraints.append(pk.constraint(
+                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_i.id].var))
+                    self.constraints.append(pk.constraint(
+                        self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)] <= contact_nodes[cn_j.id].var))
 
-                        # Gap constraint between consecutive contacts
-                        self.constraints.append(pk.constraint(
-                            time_diff * self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
-                            <= self.variable_dict['max_gap']
-                        ))
+                    # Gap constraint between consecutive contacts
+                    self.constraints.append(pk.constraint(
+                        time_diff * self.variable_dict[(sat_id, cn_i.model.id, cn_j.model.id)]
+                        <= self.variable_dict['max_gap']
+                    ))
 
                 # Add constraint that only one "next contact" can follow if scheduled
-                self.constraints.append(pk.constraint(expr == contact_nodes[cn_i.id].var))
+                # self.constraints.append(pk.constraint(expr == contact_nodes[cn_i.id].var))
+                end_var = self.variable_dict[(sat_id, cn_i.model.id, "opt_end")]
+                self.constraints.append(pk.constraint(expr + end_var == contact_nodes[cn_i.id].var))
+
 
 
 class MinMeanContactGapObjective(pk.block, GSOptObjective):
