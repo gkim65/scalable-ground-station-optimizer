@@ -222,7 +222,7 @@ class MinMaxContactGapObjective(pk.block, GSOptObjective):
             # Sort contacts by start time
             sat_contacts = list(sorted(sat_contacts, key=lambda cn: cn.model.t_start))
 
-            # Force at least one contact scheduled for this satellite TODO: Changing to none?
+            # Force at least one contact scheduled for this satellite
             # NOTE: you may want to change >= 2 → >= 1 if single contacts should be allowed
             contact_vars = [contact_nodes[cn.id].var for cn in sat_contacts]
             self.constraints.append(pk.constraint(sum(contact_vars) >= 1))
