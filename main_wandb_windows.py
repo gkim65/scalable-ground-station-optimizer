@@ -204,11 +204,16 @@ def scenario_gen(cfg, opt_window, run_name, all_true, providerCustom=[]):
                 groups = []
                 providers = []
                 stations = []
-                all_stations = optimization_results['providers'][0]['features']
-                station_name_to_coordinates = {station['properties']['name']: station['geometry']['coordinates'] for station in all_stations}
+                station_name_to_coordinates = {}
+                for providers in optimization_results['providers']:
+                    all_stations = providers['features']
+                    for station in all_stations:
+                        station_name_to_coordinates[station['properties']['name']] = station['geometry']['coordinates']
                 for station in optimization_results['selected_stations']:
                     name = station['name']
                     coords = station_name_to_coordinates.get(name)
+                    print(coords)
+                    print(name)
                     if coords:
                         coords_list.append([station['name'], station['provider'], float(coords[0]),float(coords[1]), (float(coords[0]),float(coords[1]))])
                         groups.append(text+"sat_chunk"+str(i))  # or f'optimization_{i}' if you want string labels
@@ -274,10 +279,11 @@ def GroundStationProvider_genAll(df_all, coords):
             if feat["properties"]["name"] in names
         ]
         
-        allProviderList.append(GroundStationProvider.load_geojson({
-                        "type": "FeatureCollection",
-                        "features": selected_features
-                    }))
+        if selected_features:
+            allProviderList.append(GroundStationProvider.load_geojson({
+                "type": "FeatureCollection",
+                "features": selected_features
+            }))
         
     return allProviderList
 
@@ -413,15 +419,18 @@ def main_ip(cfg : DictConfig) -> None:
 
     # Full IP:
     if cfg.setup.full_ip:
-        scenario_gen(cfg, 
-                    OptimizationWindow(
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                    ), 
-                    "IP_true_solution",
-                    True)
+        try:
+            scenario_gen(cfg, 
+                        OptimizationWindow(
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                        ), 
+                        "IP_true_solution",
+                        True)
+        except:
+            print("IP didn't work")
 
 
     if cfg.setup.dbscan:
@@ -448,59 +457,67 @@ def main_ip(cfg : DictConfig) -> None:
 
         # Convert to DataFrame for easier handling
         df_all_stations = pd.DataFrame(all_stations, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
-
+        df_all = copy.deepcopy(df_all_og)
         for dist in [5,10,15,20,30]:
-            df_all = copy.deepcopy(df_all_og)
-            clusters = DBSCAN(eps=dist, min_samples=2).fit(np.vstack(df_all['Coord'].values))
-            coords = np.vstack(df_all['Coord'].values)
+            try:
+                clusters = DBSCAN(eps=dist, min_samples=2).fit(np.vstack(df_all['Coord'].values))
+                coords = np.vstack(df_all['Coord'].values)
 
-            centroids = []
-            cluster_counts = Counter(clusters.labels_)
+                centroids = []
+                cluster_counts = Counter(clusters.labels_)
 
-            for label, count in cluster_counts.most_common():
-                if label != -1:
-                    cluster_points = coords[clusters.labels_ == label]
-                    centroid = cluster_points.mean(axis=0)
-                    centroids.append(centroid)
+                for label, count in cluster_counts.most_common():
+                    if label != -1:
+                        cluster_points = coords[clusters.labels_ == label]
+                        centroid = cluster_points.mean(axis=0)
+                        centroids.append(centroid)
+                
+                print(centroids[0:cfg.setup.gs_num])
+
+                scenario_gen(cfg, 
+                        OptimizationWindow(
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                            opt_time,
+                            opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                        ), 
+                        "DBSCAN_IP"+str(dist),
+                        True,
+                        GroundStationProvider_gen(centroids[0:cfg.setup.gs_num]))
             
-            print(centroids[0:cfg.setup.gs_num])
-
-            scenario_gen(cfg, 
-                    OptimizationWindow(
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                        opt_time,
-                        opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                    ), 
-                    "DBSCAN_IP"+str(dist),
-                    True,
-                    GroundStationProvider_gen(centroids[0:cfg.setup.gs_num]))
-        
-            for name_p, stations_lists in zip([cfg.scenario.providers, "all_default"],[stations_extra, stations_all]):
-                if name_p != "all":
-                    final_stations = greedy_match(centroids[0:cfg.setup.gs_num], stations_lists)            
-
-                    scenario_gen(cfg, 
-                            OptimizationWindow(
-                                opt_time,
-                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                                opt_time,
-                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                            ), 
-                            "DBSCAN_IP-Greedy"+name_p+str(dist),
-                            True,
-                            GroundStationProvider_genAll(df_all_stations, final_stations))
-                    final_stations = hungarian_match(centroids[0:cfg.setup.gs_num], stations_all)
-                    scenario_gen(cfg, 
-                            OptimizationWindow(
-                                opt_time,
-                                opt_time + datetime.timedelta(days=cfg.opt.full_length),
-                                opt_time,
-                                opt_time + datetime.timedelta(days=cfg.opt.full_length)
-                            ), 
-                            "DBSCAN_IP-Hungarian"+name_p+str(dist),
-                            True,
-                            GroundStationProvider_genAll(df_all_stations, final_stations))
+                for name_p, stations_lists in zip([cfg.scenario.providers, "all_default"],[stations_extra, stations_all]):
+                    if name_p != "all":
+                        final_stations = greedy_match(centroids[0:cfg.setup.gs_num], stations_lists)            
+                        print("greedy")
+                        print(final_stations)
+                        print(name_p)
+                        allProviderList = GroundStationProvider_genAll(df_all, final_stations)
+                        print(allProviderList)
+                        scenario_gen(cfg, 
+                                OptimizationWindow(
+                                    opt_time,
+                                    opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                    opt_time,
+                                    opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                                ), 
+                                "DBSCAN_IP-Greedy"+name_p+str(dist),
+                                True,
+                                GroundStationProvider_genAll(df_all, final_stations))
+                        final_stations = hungarian_match(centroids[0:cfg.setup.gs_num], stations_lists)
+                        print("hungarian")
+                        print(final_stations)
+                        scenario_gen(cfg, 
+                                OptimizationWindow(
+                                    opt_time,
+                                    opt_time + datetime.timedelta(days=cfg.opt.full_length),
+                                    opt_time,
+                                    opt_time + datetime.timedelta(days=cfg.opt.full_length)
+                                ), 
+                                "DBSCAN_IP-Hungarian"+name_p+str(dist),
+                                True,
+                                GroundStationProvider_genAll(df_all, final_stations))
+            except:
+                print(f"skip eps{dist}")
     
     if cfg.setup.kmeans:
         
