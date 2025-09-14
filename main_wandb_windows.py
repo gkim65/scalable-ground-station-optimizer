@@ -466,8 +466,9 @@ def main_ip(cfg : DictConfig) -> None:
                 centroids = []
                 cluster_counts = Counter(clusters.labels_)
 
+
                 for label, count in cluster_counts.most_common():
-                    if label != -1:
+                    if len(centroids) < cfg.setup.gs_num: #label != -1:
                         cluster_points = coords[clusters.labels_ == label]
                         centroid = cluster_points.mean(axis=0)
                         centroids.append(centroid)
