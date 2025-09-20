@@ -268,6 +268,8 @@ def GroundStationProvider_genAll(df_all, coords):
 
     allProviderList = []
     for provider, names in provider_to_names.items():
+        if provider.lower() == "leaf space":
+            provider = "leaf"
         # Read the provider's stations JSON file
         input_path = f"../../data/groundstations/{provider.lower()}.json"
         with open(input_path, "r") as f:
@@ -323,6 +325,19 @@ def hungarian_match(coords, stations_all):
 
     return [stations_all[col] for row, col in zip(row_ind, col_ind)]
     
+def returnallStations(providers= ["ksat", "atlas", "aws", "azure", "leaf", "ssc", "viasat"], extra_providers = []):
+    stations_all = []
+    stations_extra = []
+    all_stations = []
+    for provider in providers:
+        with open(f'../../data/groundstations/{provider}.json', 'r') as f:
+            data = json.load(f) 
+        for feature in data['features']:
+            stations_all.append(tuple(feature['geometry']['coordinates']))
+            if provider in extra_providers:
+                stations_extra.append(tuple(feature['geometry']['coordinates']))
+            all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
+    return stations_all, stations_extra, all_stations
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def main_ip(cfg : DictConfig) -> None:
@@ -442,18 +457,19 @@ def main_ip(cfg : DictConfig) -> None:
         else:
             extra_providers = [cfg.scenario.providers]
         
-        stations_all = [] 
-        stations_extra = []
-        all_stations = []
+        stations_all, stations_extra, all_stations = returnallStations(providers,extra_providers)
+        # stations_all = [] 
+        # stations_extra = []
+        # all_stations = []
         
-        for provider in providers:
-            with open(f'../../data/groundstations/{provider}.json', 'r') as f:
-                data = json.load(f) 
-            for feature in data['features']:
-                stations_all.append(tuple(feature['geometry']['coordinates']))
-                if provider in extra_providers:
-                    stations_extra.append(tuple(feature['geometry']['coordinates']))
-                all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
+        # for provider in providers:
+        #     with open(f'../../data/groundstations/{provider}.json', 'r') as f:
+        #         data = json.load(f) 
+        #     for feature in data['features']:
+        #         stations_all.append(tuple(feature['geometry']['coordinates']))
+        #         if provider in extra_providers:
+        #             stations_extra.append(tuple(feature['geometry']['coordinates']))
+        #         all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
 
         # Convert to DataFrame for easier handling
         df_all_stations = pd.DataFrame(all_stations, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
@@ -531,18 +547,19 @@ def main_ip(cfg : DictConfig) -> None:
         else:
             extra_providers = [cfg.scenario.providers]
         
-        stations_all = [] 
-        stations_extra = []
-        all_stations = []
+        stations_all, stations_extra, all_stations = returnallStations(providers,extra_providers)
+        # stations_all = [] 
+        # stations_extra = []
+        # all_stations = []
         
-        for provider in providers:
-            with open(f'../../data/groundstations/{provider}.json', 'r') as f:
-                data = json.load(f) 
-            for feature in data['features']:
-                stations_all.append(tuple(feature['geometry']['coordinates']))
-                if provider in extra_providers:
-                    stations_extra.append(tuple(feature['geometry']['coordinates']))
-                all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
+        # for provider in providers:
+        #     with open(f'../../data/groundstations/{provider}.json', 'r') as f:
+        #         data = json.load(f) 
+        #     for feature in data['features']:
+        #         stations_all.append(tuple(feature['geometry']['coordinates']))
+        #         if provider in extra_providers:
+        #             stations_extra.append(tuple(feature['geometry']['coordinates']))
+        #         all_stations.append([feature['properties']['name'], feature['properties']['provider'], float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]), (float(feature['geometry']['coordinates'][0]),float(feature['geometry']['coordinates'][1]))])
 
         # Convert to DataFrame for easier handling
         df_all_stations = pd.DataFrame(all_stations, columns=['name', 'provider', 'longitude', 'latitude', 'Coord'])
